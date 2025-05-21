@@ -4,6 +4,5 @@ Set of code and notebooks to study the contamination from High Column Density ab
 
 The scripts assume that there is a folder called `data/` with the following files (provided by Mahdi Qezlou and Simeon Bird):
 
-    - `data/spectra_ASTRID_self-shield_off_z2.5_500x500x2500.hdf5`
-
-    - `data/spectra_ASTRID_z2.5_500x500x2500.hdf5`
+    - data/spectra_ASTRID_self-shield_off_z2.5_500x500x2500.hdf5
+    - data/spectra_ASTRID_z2.5_500x500x2500.hdf5
