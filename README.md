@@ -6,3 +6,5 @@ The scripts assume that there is a folder called `data/` with the following file
 
     - data/spectra_ASTRID_self-shield_off_z2.5_500x500x2500.hdf5
     - data/spectra_ASTRID_z2.5_500x500x2500.hdf5
+
+These files are at NERSC, under `/global/cfs/cdirs/desicollab/users/font/astrid_hcd/data/`
