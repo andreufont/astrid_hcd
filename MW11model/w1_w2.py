@@ -3,6 +3,7 @@ import scipy.special
 import scipy.integrate as integrate
 from picca import constants
 import numpy as np
+from astropy.cosmology import FlatLambdaCDM
 
 def get_voigt_profile_wave(wave, z, logNHi):
     """Compute voigt profile at input redshift and column density on an observed wavelength grid 
@@ -50,14 +51,14 @@ def get_voigt_profile_wave(wave, z, logNHi):
     return np.exp(-tau)
 
 
-def profile_wave_to_comov_dist(wave, profile_wave, omegam, omegal, hubble):
+def profile_wave_to_comov_dist(wave, profile_wave, omegam, hubble):
 
     lambda_lya = constants.ABSORBER_IGM["LYA"]  # This is the 1215.5 A
     c = scipy.constants.speed_of_light  # ms^-1
+    r_cosmo = FlatLambdaCDM(H0=hubble*100, Om0=omegam)
 
     z_value = wave/lambda_lya - 1
-    H_z = 100*hubble*np.sqrt(omegal + omegam*(1+z_value)**3)
-    r_comov = integrate.cumulative_trapezoid(c*1e-3 / H_z, z_value, initial=0)
+    r_comov = np.array(r_cosmo.comoving_distance(z_value))  # Mpc
     lin_spaced_comov_dist = np.linspace(r_comov[0], r_comov[-1], r_comov.size)
     profile_comov_dist_ext = np.interp(lin_spaced_comov_dist, r_comov, profile_wave)
 
@@ -80,7 +81,7 @@ def fft_profile(profile, dx):
     """
     # not normalized
     size = profile.size
-    ft_profile = dx * np.fft.rfft(profile - 1) # The dx factor is included to account for the discretization of the integration (check notes)
+    ft_profile = dx * np.fft.rfft(1-profile) # The dx factor is included to account for the discretization of the integration (check notes)
     k = np.fft.rfftfreq(size, dx) * (2 * np.pi) # 2pi factor is to obtain k in rad/Mpc/h instead of in frecuency values
  
     return k, np.abs(ft_profile) # We need the abs value because rfft only guarantees >0 results, but they can be imaginary"
@@ -114,48 +115,12 @@ def wave_to_fft_profile(wave, z, logNHi, omegam, omegal, hubble):
 
     
     profile_wavelength = get_voigt_profile_wave(wave, z, logNHi)
-    profile_wavelength /= np.mean(profile_wavelength)  
-    lin_spaced_cmv, profile_cmv = profile_wave_to_comov_dist(wave, profile_wavelength, omegam, omegal, hubble)
+    profile_wavelength /= np.mean(profile_wavelength) 
+    lin_spaced_cmv, profile_cmv = profile_wave_to_comov_dist(wave, profile_wavelength, omegam, hubble)
     Deltax = lin_spaced_cmv[1]-lin_spaced_cmv[0]
     k, fft = fft_profile(profile_cmv, np.abs(Deltax))
     
     return k, fft, Deltax
-
-
-def cddf_func(colden, NHi_min, NHi_max, save=True, nbins=200):
-    """ Calculates the (area-normalized) column density distribution function 
-    
-        Parameters
-        ------------
-        colden : n-array
-            column density values in cm^-2
-        NHi_min : value
-            log10(min NHi) value where the w1 and w2 functions want to be calculated. Beware that, while colden is in cm^-2, NHi_min is in logarithmic scale
-        NHi_max : value
-            log10(max NHi) value where the w1 and w2 functions want to be calculated. Beware that, while colden is in cm^-2, NHi_max is in logarithmic scale
-        save : boolean
-            Whether the user wants to save the resulting histogram counts and bins. If not specified, = True
-        nbins : value
-            Number of bins. If not specified, nbins = 200
-
-        Returns
-        ------------
-        (array, array)
-            (Normalized counts, middle value of each NHi bin) 
-        """
-
- 
-    log_colden = np.log10(colden[colden>0])  
-
-    bins = np.linspace(17.25, 22.42, nbins+1) # 200 bins (arbitrary)
-    counts, bin_edges = np.histogram(log_colden, bins=bins, density=True)
-    bin_width = bins[1] - bins[0]
-    mid_nhi  = bin_edges[:-1] + bin_width/2  # Middle value of each NHi bin
-
-    if save == True:
-        np.savez('cddf.npz', mid_nhi=mid_nhi, counts=counts)
-    
-    return(counts, mid_nhi)
 
 
 def resample_to_logk(k, w, k_min=None, k_max=None):
