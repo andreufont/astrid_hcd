@@ -92,7 +92,7 @@ def wave_to_fft_profile(wave, z, logNHi, omegam, omegal, hubble):
     Steps
     --------
     1. Calls the function 'get_voigt_profile_wave(wave, z, logNHi)' to compute the Voigt profile of the given wave
-    2. Calls the function 'profile_wave_to_comov_dist(wave, profile_wave, cosmo, differential=False)' to change from wavelenght to comoving units
+    2. Calls the function 'profile_wave_to_comov_dist(wave, profile_wavelength, omegam, hubble)' to change from wavelenght to comoving units
     3. Calls the function 'fft_profile(profile)' to perform the Fourier transform of the profile (in comoving units)
     
     
@@ -115,7 +115,11 @@ def wave_to_fft_profile(wave, z, logNHi, omegam, omegal, hubble):
 
     
     profile_wavelength = get_voigt_profile_wave(wave, z, logNHi)
+<<<<<<< Updated upstream
     profile_wavelength /= np.mean(profile_wavelength) 
+=======
+    profile_wavelength /= np.mean(profile_wavelength)  
+>>>>>>> Stashed changes
     lin_spaced_cmv, profile_cmv = profile_wave_to_comov_dist(wave, profile_wavelength, omegam, hubble)
     Deltax = lin_spaced_cmv[1]-lin_spaced_cmv[0]
     k, fft = fft_profile(profile_cmv, np.abs(Deltax))
