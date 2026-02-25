@@ -115,11 +115,7 @@ def wave_to_fft_profile(wave, z, logNHi, omegam, omegal, hubble):
 
     
     profile_wavelength = get_voigt_profile_wave(wave, z, logNHi)
-<<<<<<< Updated upstream
     profile_wavelength /= np.mean(profile_wavelength) 
-=======
-    profile_wavelength /= np.mean(profile_wavelength)  
->>>>>>> Stashed changes
     lin_spaced_cmv, profile_cmv = profile_wave_to_comov_dist(wave, profile_wavelength, omegam, hubble)
     Deltax = lin_spaced_cmv[1]-lin_spaced_cmv[0]
     k, fft = fft_profile(profile_cmv, np.abs(Deltax))
