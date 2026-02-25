@@ -2,4 +2,7 @@
 data/
 notebooks/.ipynb_checkpoints/
 MW11model/.ipynb_checkpoints/
+SimulationFields/.ipynb_checkpoints/
+HCDclustering/.ipynb_checkpoints/
 
+.DS_Store
