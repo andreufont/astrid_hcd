@@ -65,7 +65,7 @@ def profile_wave_to_comov_dist(wave, profile_wave, omegam, hubble):
     return lin_spaced_comov_dist, profile_comov_dist_ext
 
 def fft_profile(profile, dx):
-    """Compute Fourier transform of a voigt profile
+    """Compute Fourier transform of a voigt profile 
 
     Parameters
     ----------
@@ -81,7 +81,7 @@ def fft_profile(profile, dx):
     """
     # not normalized
     size = profile.size
-    ft_profile = dx * np.fft.rfft(1-profile) # The dx factor is included to account for the discretization of the integration (check notes)
+    ft_profile = dx * np.fft.rfft(profile) # The dx factor is included to account for the discretization of the integration (check notes)
     k = np.fft.rfftfreq(size, dx) * (2 * np.pi) # 2pi factor is to obtain k in rad/Mpc/h instead of in frecuency values
  
     return k, np.abs(ft_profile) # We need the abs value because rfft only guarantees >0 results, but they can be imaginary"
@@ -115,10 +115,10 @@ def wave_to_fft_profile(wave, z, logNHi, omegam, omegal, hubble):
 
     
     profile_wavelength = get_voigt_profile_wave(wave, z, logNHi)
-    profile_wavelength /= np.mean(profile_wavelength) 
+    #profile_wavelength /= np.mean(profile_wavelength) 
     lin_spaced_cmv, profile_cmv = profile_wave_to_comov_dist(wave, profile_wavelength, omegam, hubble)
     Deltax = lin_spaced_cmv[1]-lin_spaced_cmv[0]
-    k, fft = fft_profile(profile_cmv, np.abs(Deltax))
+    k, fft = fft_profile(1-profile_cmv, Deltax)
     
     return k, fft, Deltax
 

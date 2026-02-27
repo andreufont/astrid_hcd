@@ -6,3 +6,4 @@ SimulationFields/.ipynb_checkpoints/
 HCDclustering/.ipynb_checkpoints/
 
 .DS_Store
+__pycache__
