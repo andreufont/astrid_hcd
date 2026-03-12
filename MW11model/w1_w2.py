@@ -54,7 +54,6 @@ def get_voigt_profile_wave(wave, z, logNHi):
 def profile_wave_to_comov_dist(wave, profile_wave, omegam, hubble):
 
     lambda_lya = constants.ABSORBER_IGM["LYA"]  # This is the 1215.5 A
-    c = scipy.constants.speed_of_light  # ms^-1
     r_cosmo = FlatLambdaCDM(H0=hubble*100, Om0=omegam)
 
     z_value = wave/lambda_lya - 1
@@ -115,7 +114,7 @@ def wave_to_fft_profile(wave, z, logNHi, omegam, omegal, hubble):
 
     
     profile_wavelength = get_voigt_profile_wave(wave, z, logNHi)
-    #profile_wavelength /= np.mean(profile_wavelength) 
+    profile_wavelength /= np.mean(profile_wavelength) 
     lin_spaced_cmv, profile_cmv = profile_wave_to_comov_dist(wave, profile_wavelength, omegam, hubble)
     Deltax = lin_spaced_cmv[1]-lin_spaced_cmv[0]
     k, fft = fft_profile(1-profile_cmv, Deltax)
