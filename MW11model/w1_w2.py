@@ -30,7 +30,7 @@ def get_voigt_profile_wave(wave, z, logNHi):
     me = 9.109e-31  # kg
     c = scipy.constants.speed_of_light  # m.s^-1
     k = 1.3806e-23  # m^2.kg.s^-2.K-1
-    T = 1e4  # K
+    T = 2e5  # K
     gamma = 6.265e8  # s^-1 
     
     lambda_lya = constants.ABSORBER_IGM["LYA"]  # This is the 1215.5 A
@@ -83,9 +83,9 @@ def fft_profile(profile, dx):
     ft_profile = dx * np.fft.rfft(profile) # The dx factor is included to account for the discretization of the integration (check notes)
     k = np.fft.rfftfreq(size, dx) * (2 * np.pi) # 2pi factor is to obtain k in rad/Mpc/h instead of in frecuency values
  
-    return k, np.abs(ft_profile) # We need the abs value because rfft only guarantees >0 results, but they can be imaginary"
+    return k, np.abs(ft_profile) 
   
-def wave_to_fft_profile(wave, z, logNHi, omegam, omegal, hubble):
+def wave_to_fft_profile(wave, z, logNHi, omegam, hubble):
     """Computes Fourier transform of a given wave (observed wavelenght) at input redshift and logNHi.
     
     Steps
@@ -114,7 +114,7 @@ def wave_to_fft_profile(wave, z, logNHi, omegam, omegal, hubble):
 
     
     profile_wavelength = get_voigt_profile_wave(wave, z, logNHi)
-    profile_wavelength /= np.mean(profile_wavelength) 
+    #profile_wavelength /= np.mean(profile_wavelength) 
     lin_spaced_cmv, profile_cmv = profile_wave_to_comov_dist(wave, profile_wavelength, omegam, hubble)
     Deltax = lin_spaced_cmv[1]-lin_spaced_cmv[0]
     k, fft = fft_profile(1-profile_cmv, Deltax)
