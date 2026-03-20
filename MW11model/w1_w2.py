@@ -1,9 +1,10 @@
-import scipy.constants
+import scipy.constants as scipy_constants
 import scipy.special
-import scipy.integrate as integrate
 from picca import constants
 import numpy as np
-from astropy.cosmology import FlatLambdaCDM
+
+def voigt(x, sigma=1, gamma=1):
+    return np.real(scipy.special.wofz((x + 1j*gamma)/(sigma*np.sqrt(2))))
 
 def get_voigt_profile_wave(wave, z, logNHi):
     """Compute voigt profile at input redshift and column density on an observed wavelength grid 
@@ -28,9 +29,9 @@ def get_voigt_profile_wave(wave, z, logNHi):
     f = 0.4164
     mp = 1.6726e-27  # kg
     me = 9.109e-31  # kg
-    c = scipy.constants.speed_of_light  # m.s^-1
+    c = scipy_constants.speed_of_light  # m.s^-1
     k = 1.3806e-23  # m^2.kg.s^-2.K-1
-    T = 2e5  # K
+    T = 1e4  # K
     gamma = 6.265e8  # s^-1 
     
     lambda_lya = constants.ABSORBER_IGM["LYA"]  # This is the 1215.5 A
@@ -41,27 +42,29 @@ def get_voigt_profile_wave(wave, z, logNHi):
     
     a = gamma/(4*np.pi*Deltat_wave) * (lambda_lya**2)*(10**(-10))/c # Relation between natural (lorentzian) broadening and thermal (doppler) broadening. See notes for more details 
     u = (wave_rf - lambda_lya)/Deltat_wave  # How "far" are we from the central absorption wavelength normalized with the thermal broadening
-    H = scipy.special.voigt_profile(u, np.sqrt(1/2), a) # Voigt profile in Ä taking into account doppler and natural broadening, with a standard deviation of sqrt(1/2) (typical value)
+    H = voigt(u, np.sqrt(1/2), a) # Voigt profile in Ä taking into account doppler and natural broadening, with a standard deviation of sqrt(1/2) (typical value)
+    #H = scipy.special.voigt_profile(u, np.sqrt(1/2), a) # Voigt profile in Ä taking into account doppler and natural broadening, with a standard deviation of sqrt(1/2) (typical value)
 
-    absorption = H * (e**2) * f * (lambda_lya**2) * 10**(-10)  # Check notes for detailed explanation, but this is like the effective cross-section of the absorption
-    absorption /= (4  * epsilon0 * me * (c**2) * Deltat_wave)
+    absorption = H * (e**2) * f * (lambda_lya**2) * 10**(-10) * np.sqrt(np.pi)  # Check notes for detailed explanation, but this is like the effective cross-section of the absorption
+    absorption /= (4 * np.pi * epsilon0 * me * (c**2) * Deltat_wave)
     
     # 10^N_hi in cm^-2 and absorb in m^2
     tau = absorption * (10**logNHi) * (10**4)
     return np.exp(-tau)
 
 
-def profile_wave_to_comov_dist(wave, profile_wave, omegam, hubble):
+def profile_wave_to_comov_dist(wave, profile_wave, omegam):
 
     lambda_lya = constants.ABSORBER_IGM["LYA"]  # This is the 1215.5 A
-    r_cosmo = FlatLambdaCDM(H0=hubble*100, Om0=omegam)
+    r_cosmo = constants.Cosmo(Om=omegam)
 
     z_value = wave/lambda_lya - 1
-    r_comov = np.array(r_cosmo.comoving_distance(z_value))  # Mpc
-    lin_spaced_comov_dist = np.linspace(r_comov[0], r_comov[-1], r_comov.size)
-    profile_comov_dist_ext = np.interp(lin_spaced_comov_dist, r_comov, profile_wave)
+    r_comov = r_cosmo.get_r_comov(z_value)  # Mpc/h
 
-    return lin_spaced_comov_dist, profile_comov_dist_ext
+    r_linspace = np.linspace(r_comov.min(), r_comov.max(), len(r_comov))  # We need this to be linearly spaced for the fft
+    profile_lin = np.interp(r_linspace, r_comov, profile_wave)
+
+    return r_linspace, profile_lin
 
 def fft_profile(profile, dx):
     """Compute Fourier transform of a voigt profile 
@@ -78,14 +81,14 @@ def fft_profile(profile, dx):
     (array, array)
         (wavenumber grid, voigt profile in Fourier space)
     """
-    # not normalized
+    
     size = profile.size
     ft_profile = dx * np.fft.rfft(profile) # The dx factor is included to account for the discretization of the integration (check notes)
-    k = np.fft.rfftfreq(size, dx) * (2 * np.pi) # 2pi factor is to obtain k in rad/Mpc/h instead of in frecuency values
+    k = np.fft.rfftfreq(size, dx) * (2 * np.pi) # 2pi factor is to obtain k in Mpc^-1 instead of in frecuency values
  
-    return k, np.abs(ft_profile) 
+    return k, np.abs(ft_profile)
   
-def wave_to_fft_profile(wave, z, logNHi, omegam, hubble):
+def wave_to_fft_profile(wave, z, logNHi, omegam):
     """Computes Fourier transform of a given wave (observed wavelenght) at input redshift and logNHi.
     
     Steps
@@ -103,19 +106,19 @@ def wave_to_fft_profile(wave, z, logNHi, omegam, hubble):
         Redshift
     logNHi : float
         Log10 column density (10**N_hi in cm^-2)
-    cosmo : picca.constants.Cosmo
-        Cosmology object.   
+    omegam : float
+        Matter density
     
     Returns
     -------
-    (array, array)
-        (wavenumber grid, voigt profile in Fourier space)"""
+    (array, array, float)
+        (wavenumber grid, voigt profile in Fourier space, dx)"""
 
 
     
     profile_wavelength = get_voigt_profile_wave(wave, z, logNHi)
-    #profile_wavelength /= np.mean(profile_wavelength) 
-    lin_spaced_cmv, profile_cmv = profile_wave_to_comov_dist(wave, profile_wavelength, omegam, hubble)
+    profile_wavelength /= np.mean(profile_wavelength) 
+    lin_spaced_cmv, profile_cmv = profile_wave_to_comov_dist(wave, profile_wavelength, omegam)
     Deltax = lin_spaced_cmv[1]-lin_spaced_cmv[0]
     k, fft = fft_profile(1-profile_cmv, Deltax)
     
