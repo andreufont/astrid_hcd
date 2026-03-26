@@ -33,9 +33,11 @@ def mask_skewers(colden, tau_on, tau_off, logNHi_min, logNHi_max, Nsk):
         Optical depth (damping wings not included) values of skewers with maximun and minimun colden values within the specified range
 
     """
-
     colden_max, colden_min = np.max(colden, axis=1), np.min(colden, axis=1)
-    mask = (colden_min >= 10**logNHi_min) & (colden_max <= 10**logNHi_max)
+    if logNHi_min == 0:
+        mask = colden_max <= 10**logNHi_max
+    else:
+        mask = (colden_min >= 10**logNHi_min) & (colden_max <= 10**logNHi_max)
     
     print('Number of l.o.s eliminated:', Nsk*Nsk-mask.sum(), '(', (Nsk*Nsk-mask.sum())*100/(Nsk*Nsk), '%)')
     print('Number of l.o.s to keep:', mask.sum())
@@ -71,7 +73,7 @@ def different_contributions(tau_on, tau_off, smth_factor, Np, Pw):
 
     """
 
-    tau_max = np.amax(np.array([tau_on, tau_off]), axis=0)
+    tau_max = np.maximum(tau_on, tau_off)
     tau_hcd_init = tau_max - tau_off  # only when a pixel has been influenced by an hcd it will have tau_hcd different than 0
         
     # Smoothing:
@@ -152,6 +154,10 @@ def main(args):
     with h5py.File(args.data_off,'r') as f:
         tau_off = f['tau/H/1/1215'][:]
         print('tau shape:', tau_off.shape)
+        
+    colden = colden.astype(np.float32)
+    tau_on = tau_on.astype(np.float32)
+    tau_off = tau_off.astype(np.float32)
 
     print('----- Useful information -----')
     Lbox = 250  # Mpc/h
@@ -183,7 +189,7 @@ def main(args):
     # Different contributions
     print('Dividing into different contributions')
     tau_hcd, tau_lya, tau_tot = different_contributions(tau_on_mask, tau_off_mask, args.smth_factor, Np, Pw)
-    del tau_on_mask, tau_off_mask
+    del tau_on_mask, tau_off_mask, colden_mask
 
     # Calculating deltas
     print('------------- Mean fluxes and C value --------------')
@@ -217,7 +223,7 @@ if __name__ == "__main__":
                         help="HDF5 file with damping wings")
     parser.add_argument("--data_off", type=str, required=True,
                         help="HDF5 file without damping wings")
-    parser.add_argument("--logNHi_min", type=float, required=True,
+    parser.add_argument("--logNHi_min", type=float, default=0,
                         help="Minimum log10 column density")
     parser.add_argument("--logNHi_max", type=float, required=True,
                         help="Maximum log10 column density")
