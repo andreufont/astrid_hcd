@@ -2,8 +2,58 @@ import numpy as np
 import h5py
 import argparse
 
+def div_box(Nbox, Nsk, Np, *arrays):
+    """ This function divides an original array with shape (Nsk**2, Np) into Nbox miniboxes
 
-def mask_skewers(colden, tau_on, tau_off, logNHi_min, logNHi_max, Nsk):
+    Parameters:
+    -----------------
+    Nbox : int
+        Number of miniboxes. If the original shape is not a multiple of Nmbox, the functions gets an error.
+    Nsk : int 
+        Number of skewer per side in the original box..
+    Np : int
+        Number of pixel per skewer in the original box.
+    arrays : n-array(s)
+        Original array(s) that the user wants to divide.
+
+    Returns:
+    ----------------
+    new_array : list
+        Divided array(s) into desired shape
+    """
+
+    mb_per_side = int(np.sqrt(Nbox))  # Number of miniboxes per side
+    if mb_per_side**2 != Nbox:
+        raise ValueError("Nbox must be a perfect square")
+    
+    mb_size = Nsk // mb_per_side  # Number of skewers per side inside each 
+
+    # Computing slices
+    slices = []
+    for j_mb in range(mb_per_side):  
+        for i_mb in range(mb_per_side):
+            imin, imax = i_mb*mb_size, (i_mb+1)*mb_size
+            jmin, jmax = j_mb*mb_size, (j_mb+1)*mb_size
+            slices.append((imin, imax, jmin, jmax))
+
+    results = []
+    for arr in arrays:
+        
+        if arr.shape != (Nsk**2, Np):
+            raise ValueError(f"Expected shape {(Nsk**2, Np)}, got {arr.shape}")
+            
+        grid = arr.reshape(Nsk, Nsk, Np)
+        new_array = np.zeros((Nbox, mb_size**2, Np))
+        for mb_id, (imin, imax, jmin, jmax) in enumerate(slices):
+            minibox = grid[imin:imax, jmin:jmax, :]
+            new_array[mb_id] = minibox.reshape(-1, Np)
+
+        results.append(new_array) 
+
+    return results, mb_size
+
+
+def mask_skewers(colden, logNHi_min, logNHi_max, Nsk, *arrays):
     """
     Function to mask skewers with maximum column density value larger than logNHi_max and minimiun column density value smaller than logNHi_min
 
@@ -15,38 +65,40 @@ def mask_skewers(colden, tau_on, tau_off, logNHi_min, logNHi_max, Nsk):
         Log(10) of minimun column density value to be considered.
     logNHI_max: value
         Log(10) of maximun column density value to be considered.
-    tau_on: n-array
-        Optical depth with damping wings
-    tau_off: n-array
-        Optical depth without damping wings
     Nsk: value
         Total number of skewers
+    arrays : n-array(s)
+        Original array(s) that the user wants to mask. Must be same shape as colden.
 
 
     Returns:
     --------------------
     colden_mask: n-array
         Column density values of skewers eith maximun and minimun colden values within the specified range
-    tau_on_mask: n-array
-        Optical depth (damping wings included) values of skewers with maximun and minimun colden values within the specified range
-    tau_off_mask: n-array
-        Optical depth (damping wings not included) values of skewers with maximun and minimun colden values within the specified range
+    new_array : list
+        Masked array(s) 
 
     """
+    
     colden_max, colden_min = np.max(colden, axis=1), np.min(colden, axis=1)
     if logNHi_min == 0:
         mask = colden_max <= 10**logNHi_max
     else:
         mask = (colden_min >= 10**logNHi_min) & (colden_max <= 10**logNHi_max)
     
-    print('Number of l.o.s eliminated:', Nsk*Nsk-mask.sum(), '(', (Nsk*Nsk-mask.sum())*100/(Nsk*Nsk), '%)')
-    print('Number of l.o.s to keep:', mask.sum())
+    #print('Number of l.o.s eliminated:', Nsk*Nsk-mask.sum(), '(', (Nsk*Nsk-mask.sum())*100/(Nsk*Nsk), '%)')
+    #print('Number of l.o.s to keep:', mask.sum())
+
+    mask_sum = mask.sum()
 
     colden_mask = colden[mask]
-    tau_on_mask = tau_on[mask]
-    tau_off_mask = tau_off[mask]
+    masked_arrays = []
+    for arr in arrays:
+        new_array = arr[mask]
+        masked_arrays.append(new_array)
 
-    return colden_mask, tau_on_mask, tau_off_mask
+        
+    return colden_mask, mask_sum, masked_arrays
 
 
 def different_contributions(tau_on, tau_off, smth_factor, Np, Pw):
@@ -119,13 +171,9 @@ def deltas(tau_hcd, tau_lya, tau_tot):
 
     # Mean values and C 
     Fmean_hcd = np.mean(F_hcd)
-    print('Mean HCD flux =', Fmean_hcd)
     Fmean_lya = np.mean(F_lya)
-    print('Mean Lya flux =', Fmean_lya)
     Fmean_tot = np.mean(F_tot)
-    print('Mean (total) flux =', Fmean_tot)
     C = Fmean_tot/(Fmean_hcd*Fmean_lya) - 1
-    print('C value =', C)
 
     # Deltas
     delta_hcd = F_hcd/Fmean_hcd - 1
@@ -159,7 +207,7 @@ def main(args):
     tau_on = tau_on.astype(np.float32)
     tau_off = tau_off.astype(np.float32)
 
-    print('----- Useful information -----')
+    print('----- Simulation box information -----')
     Lbox = 250  # Mpc/h
     print('box size:', Lbox, 'Mpc/h')
 
@@ -181,39 +229,80 @@ def main(args):
     print(Ssk, 'Mpc/h skewer separation')
     # We are dividing the total box width in comoving units by the number of skewers per side
 
-    # Masking:
-    print('---------- Masking ------------')
-    colden_mask, tau_on_mask, tau_off_mask = mask_skewers(colden, tau_on, tau_off, args.logNHi_min, args.logNHi_max, Nsk)
-    del tau_on, tau_off, colden  # To save memory
-
-    # Different contributions
-    print('Dividing into different contributions')
-    tau_hcd, tau_lya, tau_tot = different_contributions(tau_on_mask, tau_off_mask, args.smth_factor, Np, Pw)
-    del tau_on_mask, tau_off_mask, colden_mask
-
-    # Calculating deltas
-    print('------------- Mean fluxes and C value --------------')
-    Fmean_hcd, Fmean_lya, Fmean_tot, C, delta_hcd, delta_lya, delta_tot = deltas(tau_hcd, tau_lya, tau_tot)
-
-    # Saving
-    with h5py.File(args.output_dir, "w") as f:
+    # Dividing into miniboxes
+    print('-------------- Dividing into %.0f miniboxes -------------' %args.Nmbox)
+    (colden_mb, tau_on_mb, tau_off_mb), Nsk_mb = div_box(args.Nmbox, Nsk, Np, colden, tau_on, tau_off)
+    print('New data shape:', colden_mb.shape)
+    del colden, tau_on, tau_off
     
-        f.attrs['logNHI_min'] = args.logNHi_min
-        f.attrs['logNHI_max'] = args.logNHi_max
-        f.attrs['Smoothing factor'] = args.smth_factor
-        f.create_dataset('C', data=C)
-    
-        grp1 = f.create_group('deltas')
-        grp1.create_dataset('delta_hcd', data=delta_hcd)
-        grp1.create_dataset('delta_lya', data=delta_lya)
-        grp1.create_dataset('delta_tot', data=delta_tot)
-    
-        grp2 = f.create_group('mean_fluxes')
-        grp2.create_dataset('mean_flux_hcd', data=Fmean_hcd)
-        grp2.create_dataset('mean_flux_lya', data=Fmean_lya)
-        grp2.create_dataset('mean_flux_tot', data=Fmean_tot)
-    print('Results saved in', args.output_dir)
+    print('Minibox information:')
+    Lmbox = Lbox/np.sqrt(args.Nmbox)  # Mpc/h
+    print('minibox size:', Lmbox, 'Mpc/h')
 
+    # Number of skewers per side
+    print(Nsk_mb,'skewers per side of minibox')
+
+    # Number of pixels per skewer
+    Np = colden_mb.shape[2]
+    print(Np, 'pixels per skewer')
+
+    # Pixel width 
+    Pw = Lbox/Np  # Mpc/h 
+    print(Pw, 'Mpc/h pixel width')
+    
+    # Minimum separation between skewers
+    Ssk_mb = Lmbox/Nsk_mb  # Mpc/h 
+    print(Ssk_mb, 'Mpc/h skewer separation')
+
+
+    # Iterating over all miniboxes
+    masked_los = []
+    for mb_index in np.arange(args.Nmbox):
+        print('Minibox', mb_index, '...')  
+        colden, tau_on, tau_off = colden_mb[mb_index], tau_on_mb[mb_index], tau_off_mb[mb_index]
+        # Masking:
+        colden_mask, mask_sum, (tau_on_mask, tau_off_mask) = mask_skewers(colden, args.logNHi_min, args.logNHi_max, Nsk_mb, tau_on, tau_off)
+        del tau_on, tau_off, colden  # To save memory
+        masked_los.append(mask_sum)
+
+        # Different contributions
+        tau_hcd, tau_lya, tau_tot = different_contributions(tau_on_mask, tau_off_mask, args.smth_factor, Np, Pw)
+        del tau_on_mask, tau_off_mask
+
+        # Calculating deltas
+        Fmean_hcd, Fmean_lya, Fmean_tot, C, delta_hcd, delta_lya, delta_tot = deltas(tau_hcd, tau_lya, tau_tot)
+
+        # Saving
+        with h5py.File(f"{args.output_dir}/minibox_{mb_index:02d}.hdf5", "w") as f:
+        
+            f.attrs['logNHI_min'] = args.logNHi_min
+            f.attrs['logNHI_max'] = args.logNHi_max
+            f.attrs['Smoothing factor'] = args.smth_factor
+            
+            f.attrs['box_size_Mpch'] = Lbox
+            f.attrs['minibox_size_Mpch'] = Lmbox
+            f.attrs['skewers_per_side'] = Nsk_mb
+            f.attrs['pixels_per_skewer'] = Np
+            f.attrs['pixel_width_Mpch'] = Pw
+            f.attrs['skewer_separation_Mpch'] = Ssk_mb
+    
+            grp1 = f.create_group('deltas')
+            grp1.create_dataset('delta_hcd', data=delta_hcd)
+            grp1.create_dataset('delta_lya', data=delta_lya)
+            grp1.create_dataset('delta_tot', data=delta_tot)
+    
+            grp2 = f.create_group('mean_fluxes')
+            grp2.create_dataset('mean_flux_hcd', data=Fmean_hcd)
+            grp2.create_dataset('mean_flux_lya', data=Fmean_lya)
+            grp2.create_dataset('mean_flux_tot', data=Fmean_tot)
+
+            f.create_dataset('C', data=C)
+            f.create_dataset('Colden', data=colden_mask)
+            
+        print(f'Done and saved in {args.output_dir}/minibox_{mb_index:02d}.hdf5')
+    
+    masked_los = np.array(masked_los)
+    print('Total number of masked los:', Nsk*Nsk-masked_los.sum(), '(', (Nsk*Nsk-masked_los.sum())*100/(Nsk*Nsk), '%)')
 
 if __name__ == "__main__":
 
@@ -223,6 +312,8 @@ if __name__ == "__main__":
                         help="HDF5 file with damping wings")
     parser.add_argument("--data_off", type=str, required=True,
                         help="HDF5 file without damping wings")
+    parser.add_argument("--Nmbox", type=int, default=1,
+                        help="Number of miniboxes to split the simulation in")
     parser.add_argument("--logNHi_min", type=float, default=0,
                         help="Minimum log10 column density")
     parser.add_argument("--logNHi_max", type=float, required=True,
