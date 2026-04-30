@@ -84,7 +84,7 @@ def fft_profile(profile, dx):
     
     size = profile.size
     ft_profile = dx * np.fft.rfft(profile) # The dx factor is included to account for the discretization of the integration (check notes)
-    k = np.fft.rfftfreq(size, dx) * (2 * np.pi) # 2pi factor is to obtain k in Mpc^-1 instead of in frecuency values
+    k = np.fft.rfftfreq(size, dx) * (2 * np.pi) # 2pi factor is to obtain k in h/Mpc^-1 instead of in frecuency values
  
     return k, np.abs(ft_profile)
   
