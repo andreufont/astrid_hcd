@@ -94,8 +94,11 @@ def mask_skewers(colden, logNHi_min, logNHi_max, Nsk, *arrays):
     colden_mask = colden[mask]
     masked_arrays = []
     for arr in arrays:
+        i = 1
+        print(i)
         new_array = arr[mask]
         masked_arrays.append(new_array)
+        i += 1
 
         
     return colden_mask, mask_sum, masked_arrays
