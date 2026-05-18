@@ -39,10 +39,6 @@ def main(args):
     Nmbox = len(glob.glob(args.folder_ffts + '/*.hdf5'))
     print(Nmbox, 'Miniboxes found')
 
-    filename = glob.glob(args.folder_ffts + '/*.hdf5')[0]
-    with h5py.File(filename, 'r') as f:
-        k_los = f['k_los'][:]
-
     px_tot = []
     px_lya, px_hcd, px_lyahcd = [], [], []
     px_3lya, px_3hcd, px_4 = [], [], []
@@ -181,6 +177,8 @@ def main(args):
         f.create_dataset('px_4', data=px_4)
 
     print(f'Results saved in {args.output_file}.hdf5')
+
+
     
     return
 
