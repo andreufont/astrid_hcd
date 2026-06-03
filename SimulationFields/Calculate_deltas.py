@@ -53,7 +53,7 @@ def div_box(Nbox, Nsk, Np, *arrays):
     return results, mb_size
 
 
-def mask_skewers(colden, logNHi_min, logNHi_max, Nsk, *arrays):
+def mask_skewers(colden, logNHi_min, logNHi_max):
     """
     Function to mask skewers with maximum column density value larger than logNHi_max and minimiun column density value smaller than logNHi_min
 
@@ -65,18 +65,14 @@ def mask_skewers(colden, logNHi_min, logNHi_max, Nsk, *arrays):
         Log(10) of minimun column density value to be considered.
     logNHI_max: value
         Log(10) of maximun column density value to be considered.
-    Nsk: value
-        Total number of skewers
-    arrays : n-array(s)
-        Original array(s) that the user wants to mask. Must be same shape as colden.
 
 
     Returns:
     --------------------
-    colden_mask: n-array
-        Column density values of skewers eith maximun and minimun colden values within the specified range
-    new_array : list
-        Masked array(s) 
+    mask : n-array
+        Boolean mask. True if all the pixels have NHi_min < colden < NHi_max. False if at least one pixel is not within the colden ranges
+    mask_sum : value
+        Number of masked skewers
 
     """
     
@@ -85,23 +81,11 @@ def mask_skewers(colden, logNHi_min, logNHi_max, Nsk, *arrays):
         mask = colden_max <= 10**logNHi_max
     else:
         mask = (colden_min >= 10**logNHi_min) & (colden_max <= 10**logNHi_max)
-    
-    #print('Number of l.o.s eliminated:', Nsk*Nsk-mask.sum(), '(', (Nsk*Nsk-mask.sum())*100/(Nsk*Nsk), '%)')
-    #print('Number of l.o.s to keep:', mask.sum())
 
     mask_sum = mask.sum()
 
-    colden_mask = colden[mask]
-    masked_arrays = []
-    for arr in arrays:
-        i = 1
-        print(i)
-        new_array = arr[mask]
-        masked_arrays.append(new_array)
-        i += 1
-
         
-    return colden_mask, mask_sum, masked_arrays
+    return mask, mask_sum
 
 
 def different_contributions(tau_on, tau_off, smth_factor, Np, Pw):
@@ -143,7 +127,7 @@ def different_contributions(tau_on, tau_off, smth_factor, Np, Pw):
     return tau_hcd, tau_lya, tau_tot
 
 
-def deltas(tau_hcd, tau_lya, tau_tot):
+def deltas(tau_hcd, tau_lya, tau_tot, mask):
     """
     Function to calculate the flux deltas of lyman alpha forest, hcds and total flux
 
@@ -159,11 +143,11 @@ def deltas(tau_hcd, tau_lya, tau_tot):
     Returns:
     --------------
     Fmean_hcd, Fmean_lya, Fmean_tot: values
-        Mean flux value of hcd, lya and total flux
+        Mean flux value of hcd, lya and total flux (computed only with valid skewers)
     C: value
-        Correlation coefficent between the hcd and the lya fields
+        Correlation coefficent between the hcd and the lya fields (computed only with valid skewers)
     delta_hcd, delta_lya, delta_tot : n-arrays
-        Contributions of hcd (flux_hcd) and lya (flux_lya) to the total flux (flux_tot)
+        Contributions of hcd (flux_hcd) and lya (flux_lya) to the total flux (flux_tot) (all skewers, valid and non-valid)
 
     """
     
@@ -173,12 +157,16 @@ def deltas(tau_hcd, tau_lya, tau_tot):
     F_tot = np.exp(-tau_tot)
 
     # Mean values and C 
-    Fmean_hcd = np.mean(F_hcd)
-    Fmean_lya = np.mean(F_lya)
-    Fmean_tot = np.mean(F_tot)
+    Fmean_hcd = np.mean(F_hcd[mask])
+    Fmean_lya = np.mean(F_lya[mask])
+    Fmean_tot = np.mean(F_tot[mask])
     C = Fmean_tot/(Fmean_hcd*Fmean_lya) - 1
 
     # Deltas
+    #delta_hcd = np.where(mask[:, None], F_hcd/Fmean_hcd - 1, np.nan)
+    #delta_lya = np.where(mask[:, None], F_lya/Fmean_lya - 1, np.nan)
+    #delta_tot = np.where(mask[:, None], F_tot/Fmean_tot - 1, np.nan)
+
     delta_hcd = F_hcd/Fmean_hcd - 1
     delta_lya = F_lya/Fmean_lya - 1
     delta_tot = F_tot/Fmean_tot - 1
@@ -264,16 +252,14 @@ def main(args):
         print('Minibox', mb_index, '...')  
         colden, tau_on, tau_off = colden_mb[mb_index], tau_on_mb[mb_index], tau_off_mb[mb_index]
         # Masking:
-        colden_mask, mask_sum, (tau_on_mask, tau_off_mask) = mask_skewers(colden, args.logNHi_min, args.logNHi_max, Nsk_mb, tau_on, tau_off)
-        del tau_on, tau_off, colden  # To save memory
+        mask, mask_sum = mask_skewers(colden, args.logNHi_min, args.logNHi_max)
         masked_los.append(mask_sum)
 
         # Different contributions
-        tau_hcd, tau_lya, tau_tot = different_contributions(tau_on_mask, tau_off_mask, args.smth_factor, Np, Pw)
-        del tau_on_mask, tau_off_mask
-
+        tau_hcd, tau_lya, tau_tot = different_contributions(tau_on, tau_off, args.smth_factor, Np, Pw)       
         # Calculating deltas
-        Fmean_hcd, Fmean_lya, Fmean_tot, C, delta_hcd, delta_lya, delta_tot = deltas(tau_hcd, tau_lya, tau_tot)
+        Fmean_hcd, Fmean_lya, Fmean_tot, C, delta_hcd, delta_lya, delta_tot = deltas(tau_hcd, tau_lya, tau_tot, mask) 
+
 
         # Saving
         with h5py.File(f"{args.output_dir}/minibox_{mb_index:02d}.hdf5", "w") as f:
@@ -300,13 +286,16 @@ def main(args):
             grp2.create_dataset('mean_flux_tot', data=Fmean_tot)
 
             f.create_dataset('C', data=C)
-            f.create_dataset('Colden', data=colden_mask)
+            f.create_dataset('Colden', data=colden)
+            f.create_dataset('Mask', data=mask)
             
         print(f'Done and saved in {args.output_dir}/minibox_{mb_index:02d}.hdf5')
     
     masked_los = np.array(masked_los)
     print('Total number of masked los:', Nsk*Nsk-masked_los.sum(), '(', (Nsk*Nsk-masked_los.sum())*100/(Nsk*Nsk), '%)')
+    print('WARNING: mean fluxes computed only with valid (aka, within colden restrictions) skewers. However, the deltas include all the skewers (valid and non valid)')
 
+    
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Process skewer optical depth data")
