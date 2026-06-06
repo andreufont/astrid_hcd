@@ -38,36 +38,37 @@ def main(args):
             fft_lyahcd = f['fft_lyahcd'][:]
             k_los = f['k_los'][:]
             C_mb = f['C'][()]
+            mask = f['mask'][()][:]
             C.append(C_mb)
 
         # Calculating P1d contributions and mean values
         # Total
         p1ds_tot = fft_tot*fft_tot.conjugate()*(Lbox/Np**2)  # Same units as Lbox
-        p1d_tot.append(np.mean(p1ds_tot, axis=0))
+        p1d_tot.append(np.nanmean(p1ds_tot, axis=0))
 
         # Lya
         p1ds_lya = fft_lya*fft_lya.conjugate()*(Lbox/Np**2)  # Same units as Lbox
-        p1d_lya.append(np.mean(p1ds_lya, axis=0))
+        p1d_lya.append(np.nanmean(p1ds_lya, axis=0))
 
         # Hcd
         p1ds_hcd = fft_hcd*fft_hcd.conjugate()*(Lbox/Np**2)  # Same units as Lbox
-        p1d_hcd.append(np.mean(p1ds_hcd, axis=0))
+        p1d_hcd.append(np.nanmean(p1ds_hcd, axis=0))
 
         # LyaxHcd
         p1ds_lyahcd = fft_lya*fft_hcd.conjugate()*Lbox/(Np**2)  # Same units as Lbox
-        p1d_lyahcd.append(np.mean(p1ds_lyahcd, axis=0))
+        p1d_lyahcd.append(np.nanmean(p1ds_lyahcd, axis=0))
 
         # 3Lya
         p1ds_3lya = fft_lyahcd*fft_lya.conjugate()*Lbox/(Np**2)  # Same units as Lbox
-        p1d_3lya.append(np.mean(p1ds_3lya, axis=0))
+        p1d_3lya.append(np.nanmean(p1ds_3lya, axis=0))
 
         # 3Hcd
         p1ds_3hcd = fft_lyahcd*fft_hcd.conjugate()*Lbox/(Np**2)  # Same units as Lbox
-        p1d_3hcd.append(np.mean(p1ds_3hcd, axis=0))
+        p1d_3hcd.append(np.nanmean(p1ds_3hcd, axis=0))
 
         # 4
-        p1ds_4 = fft_lyahcd*fft_lyahcd.conjugate()*Lbox/(Np**2) - C_mb**2  # Same units as Lbox
-        p1d_4.append(np.mean(p1ds_4, axis=0))
+        p1ds_4 = (fft_lyahcd*fft_lyahcd.conjugate()- C_mb**2)*Lbox/(Np**2)  # Same units as Lbox
+        p1d_4.append(np.nanmean(p1ds_4, axis=0))
 
         mb_index += 1
 
@@ -101,6 +102,7 @@ def main(args):
         f.create_dataset('p1d_3lya', data=p1d_3lya)
         f.create_dataset('p1d_3hcd', data=p1d_3hcd)
         f.create_dataset('p1d_4', data=p1d_4)
+        f.create_dataset('mask', data=mask)
 
     print(f'Results saved in {args.output_file}.hdf5')
 

@@ -4,36 +4,46 @@ import h5py
 import glob
 import argparse
 
-def px_calc(r_bins, row_in, col_in, Nsk, colden_grid, fft_A, fft_B, prt=True):
-    if prt:
+def px_calc(r_bins, row_in, col_in, Nsk, fft_A, fft_B, jstep1, jstep2, verbose=True):
+    if verbose:
         print('rbin | # valid pairs | # masked pairs ')
-    masked = 0
     jstep = 1
     px_tot = []
     for s in np.arange(len(r_bins)-1):
+        masked = 0
         px = []
         rows_in, cols_in = row_in[s], col_in[s]
-        #if s > 4:
-            #jstep = 2
-        #if s > 6:
-            #jstep = 2
-        for i in np.arange(0, Nsk-1, jstep):
-            for j in np.arange(0, Nsk-1, jstep):
+        if s > 4:
+            jstep = jstep1
+        if s > 6:
+            jstep = jstep2
+        for i in np.arange(0, Nsk, jstep):
+            for j in np.arange(0, Nsk, jstep):
                 i_pairs, j_pairs = (rows_in + i)%Nsk, (cols_in + j)%Nsk
-                if (np.isnan(colden_grid[i, j]).sum()) or (np.isnan(colden_grid[i_pairs, j_pairs]).sum()):
+                A = fft_A[i, j]
+                B = fft_B[i_pairs, j_pairs].conjugate()
+                px1, px2 = False, False
+                if (np.isnan(A).sum()) or (np.isnan(B).sum()):
                     masked += 1
                     continue
                 else:
-                    A = fft_A[i, j]
-                    B = fft_B[i_pairs, j_pairs].conjugate()
-                    px.append(np.real(A*B))
-        
-        if prt:
-            print(s, ' | ', len(px), ' | ', masked)            
+                    px1 = np.real(A*B)
+                    
+                    A = fft_A[i_pairs, j_pairs]
+                    B = fft_B[i, j].conjugate()
+                    if (np.isnan(A).sum()) or (np.isnan(B).sum()):
+                        masked += 1
+                        continue
+                    else:
+                        px2 = np.real(A*B)
+                        px.append(np.mean([px1, px2], axis=0))
+                    
+        if verbose:
+            print(s, ' | ', len(px)*len(rows_in), ' | ', masked)
         px = np.array(np.mean(px, axis=0))
         px_tot.append(np.mean(px, axis=0))
         
-    return np.array(px_tot)  
+    return np.array(px_tot)
 
 def main(args):
     Nmbox = len(glob.glob(args.folder_ffts + '/*.hdf5'))
@@ -69,22 +79,19 @@ def main(args):
             fft_lyahcd = f['fft_lyahcd'][:, :args.index_max]
             k_los = f['k_los'][:args.index_max]
             if mb_index == 0:
-                print('klos from', k_los[0], 'to', k_los[-1], 'Mpc^-1')
+                print('klos from', k_los[0], 'to', k_los[-1], 'h/Mpc')
             C_mb = f['C'][()]
             C.append(C_mb)
-            colden = f['colden'][:]
+            mask = f['mask'][:]
 
         # Reshaping fft arrays:
+        mask_grid = mask.reshape(Nsk, Nsk)
         fft_tot_grid = fft_tot.reshape(Nsk, Nsk, len(k_los))
         fft_lya_grid = fft_lya.reshape(Nsk, Nsk, len(k_los))
         fft_hcd_grid = fft_hcd.reshape(Nsk, Nsk, len(k_los))
         fft_lyahcd_grid = fft_lyahcd.reshape(Nsk, Nsk, len(k_los))
 
-        # Masking
-        colden_mask = (colden > 10**args.logNHi_min) & (colden < 10**args.logNHi_max)
-        colden_grid = np.where(colden_mask, colden, np.nan).reshape(Nsk, Nsk, Np)
-
-        # Computing radial distances (oly for the first box)
+        # Computing radial distances (only for the first box)
         if mb_index == 0:
             ix = np.linspace(0, Lmbox, Nsk)  # Same units as Lmbox
             iy = ix  # Mpc
@@ -109,37 +116,44 @@ def main(args):
         # Total
         fft_A = fft_tot_grid
         fft_B = fft_tot_grid
-        px_tot.append(px_calc(r_bins, row_in, col_in, Nsk, colden_grid, fft_A, fft_B)*Lbox/(Np**2))  # Same units as Lbox      
+        px = px_calc(r_bins, row_in, col_in, Nsk, fft_A, fft_B, jstep1=args.jstep1, jstep2=args.jstep2)*Lbox/(Np**2)  # Same units as Lbox 
+        px_tot.append(px)     
 
         # Lya
         fft_A = fft_lya_grid
         fft_B = fft_lya_grid
-        px_lya.append(px_calc(r_bins, row_in, col_in, Nsk, colden_grid, fft_A, fft_B, prt=False)*Lbox/(Np**2))  # Same units as Lbox
+        px = px_calc(r_bins, row_in, col_in, Nsk, fft_A, fft_B, jstep1=args.jstep1, jstep2=args.jstep2, verbose=False)*Lbox/(Np**2)  # Same units as Lbox
+        px_lya.append(px)
 
         # Hcd
         fft_A = fft_hcd_grid
         fft_B = fft_hcd_grid
-        px_hcd.append(px_calc(r_bins, row_in, col_in, Nsk, colden_grid, fft_A, fft_B, prt=False)*Lbox/(Np**2))  # Same units as Lbox
+        px = px_calc(r_bins, row_in, col_in, Nsk, fft_A, fft_B, jstep1=args.jstep1, jstep2=args.jstep2, verbose=False)*Lbox/(Np**2)  # Same units as Lbox
+        px_hcd.append(px)
 
         # LyaxHcd
         fft_A = fft_lya_grid
         fft_B = fft_hcd_grid
-        px_lyahcd.append(px_calc(r_bins, row_in, col_in, Nsk, colden_grid, fft_A, fft_B, prt=False)*Lbox/(Np**2))  # Same units as Lbox
-
+        px = px_calc(r_bins, row_in, col_in, Nsk, fft_A, fft_B, jstep1=args.jstep1, jstep2=args.jstep2, verbose=False)*Lbox/(Np**2)  # Same units as Lbox
+        px_lyahcd.append(px)
+                
         # 3Lya
         fft_A = fft_lya_grid
         fft_B = fft_lyahcd_grid
-        px_3lya.append(px_calc(r_bins, row_in, col_in, Nsk, colden_grid, fft_A, fft_B, prt=False)*Lbox/(Np**2))  # Same units as Lbox
-
+        px = px_calc(r_bins, row_in, col_in, Nsk, fft_A, fft_B, jstep1=args.jstep1, jstep2=args.jstep2, verbose=False)*Lbox/(Np**2)  # Same units as Lbox
+        px_3lya.append(px)
+        
         # 3Hcd
         fft_A = fft_hcd_grid
         fft_B = fft_lyahcd_grid
-        px_3hcd.append(px_calc(r_bins, row_in, col_in, Nsk, colden_grid, fft_A, fft_B, prt=False)*Lbox/(Np**2))  # Same units as Lbox
+        px = px_calc(r_bins, row_in, col_in, Nsk, fft_A, fft_B, jstep1=args.jstep1, jstep2=args.jstep2, verbose=False)*Lbox/(Np**2)  # Same units as Lbox
+        px_3hcd.append(px)
 
         # 4
         fft_A = fft_lyahcd_grid
         fft_B = fft_lyahcd_grid
-        px_4.append(px_calc(r_bins, row_in, col_in, Nsk, colden_grid, fft_A, fft_B, prt=False)*Lbox/(Np**2))  # Same units as Lbox
+        px = px_calc(r_bins, row_in, col_in, Nsk, fft_A, fft_B, jstep1=args.jstep1, jstep2=args.jstep2, verbose=False)*Lbox/(Np**2)  # Same units as Lbox
+        px_4.append(px)
 
         mb_index += 1
 
@@ -166,6 +180,7 @@ def main(args):
             print(f'{m} = {f.attrs[m]}')
             
         f.create_dataset('C', data=C)
+        f.create_dataset('Mask', data=mask)
         f.create_dataset('r_bins', data=r_bins)
         f.create_dataset('k_los', data=k_los)
         f.create_dataset('px_tot', data=px_tot)
@@ -191,10 +206,10 @@ if __name__ == "__main__":
                         help="Folder witht the HDF5 files with ffts of the different fields for each minibox")
     parser.add_argument("--index_max", type=int, required=True,
                         help="Up to what index the user needs to read k_los")
-    parser.add_argument("--logNHi_min", type=float, default=0,
-                        help="Minimum log10 column density")
-    parser.add_argument("--logNHi_max", type=float, required=True,
-                        help="Maximum log10 column density")
+    parser.add_argument("--jstep1", type=int, default=1,
+                        help="Step between adyacent skewers for rabial bin higher than 4")
+    parser.add_argument("--jstep2", type=int, default=1,
+                        help="Step between adyacent skewers for rabial bin higher than 6")  
     parser.add_argument("--output_file", type=str, required=True,
                         help="Path to HDF5 file where the results will be stored")
 

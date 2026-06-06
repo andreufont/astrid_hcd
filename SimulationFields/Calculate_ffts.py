@@ -33,6 +33,7 @@ def main(args):
             C = f['C'][()] 
 
             colden = f['Colden'][:]
+            mask = f['Mask'][:]
 
         # Calculating k_los
         k_los = 2*np.pi*np.fft.rfftfreq(Np, d=Pw)  # In h/Mpc
@@ -54,12 +55,13 @@ def main(args):
             f.create_dataset('C', data=C)
             f.create_dataset('k_los', data=k_los)
             f.create_dataset('colden', data=colden)
+            f.create_dataset('mask', data=mask)
 
         # Computing (and saving) ffts
-        fft_tot = np.fft.rfft(delta_tot, axis=-1)
-        fft_lya = np.fft.rfft(delta_lya, axis=-1)
-        fft_hcd = np.fft.rfft(delta_hcd, axis=-1)
-        fft_lyahcd = np.fft.rfft(delta_hcd*delta_lya, axis=-1)
+        fft_tot = np.where(mask[:, None], np.fft.rfft(delta_tot, axis=-1), np.nan)
+        fft_lya = np.where(mask[:, None], np.fft.rfft(delta_lya, axis=-1), np.nan)
+        fft_hcd = np.where(mask[:, None], np.fft.rfft(delta_hcd, axis=-1), np.nan)
+        fft_lyahcd = np.where(mask[:, None], np.fft.rfft(delta_hcd*delta_lya, axis=-1), np.nan)
 
         with h5py.File(f"{args.output_dir}/minibox_{mb_index:02d}.hdf5", 'a') as f:
        
