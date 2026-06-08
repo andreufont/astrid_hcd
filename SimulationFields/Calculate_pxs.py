@@ -169,7 +169,8 @@ def main(args):
         f.attrs['logNHI_max'] = logNHi_max
         f.attrs['Smoothing factor'] = smth_factor
             
-        f.attrs['minibox_size_Mpch'] = Lbox
+        f.attrs['minibox_size_Mpch'] = Lmbox
+        f.attrs['box_size_Mpch'] = Lbox
         f.attrs['skewers_per_side'] = Nsk
         f.attrs['pixels_per_skewer'] = Np
         f.attrs['pixel_width_Mpch'] = Pw
