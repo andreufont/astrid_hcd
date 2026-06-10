@@ -220,7 +220,7 @@ def fn_to_fNHi(fn, NHirange, dX, norm=False, norm_factor=None):
 
 
 
-def compute_w1_w2(wave, NHirange, fNHiX, z, hubble, omegam, resample=True):
+def compute_w1_w2(wave, NHirange, fNHiX, z, hubble, omegam, resample=True, Mpc=True):
     """ Function to compute w1 and w2 following MW11 paper
     
     Parameters
@@ -239,40 +239,42 @@ def compute_w1_w2(wave, NHirange, fNHiX, z, hubble, omegam, resample=True):
         omega matter density
     resample : bool
         Wether the user wants the outputs resampled into logarithmic spaced k
+    Mpc : bool
+        Wether the user wants the outputs in units of h or not. Default is not.
     
     Returns
     ---------
     (array, array, array)
-        (k_los [Mpc^-1], w1 [Mpc], w2 [Unitless])
+        (k_los [Mpc^-1], w1 [Mpc], w2 [Unitless]) if Mpc = True
+        (k_los [h/Mpc], w1 [Mpc/h], w2 [Unitless]) if Mpc = False
     
     """
  
     # Conversion factor dXdComov:
     c_kms = scipy_constants.speed_of_light*1e-3  # km/s
-    conversion_factor = 100*hubble*((1+z)**2)/c_kms
+    conversion_factor = 100*((1+z)**2)/c_kms  # h/Mpc 
     cddf = conversion_factor*fNHiX
 
     # Computation of w1 and w2
     w1_int, w2_int = [], []
     for i, nhi_value in enumerate(NHirange):
         k_w1w2, d, Deltax = wave_to_fft_profile(wave, z, nhi_value, omegam=omegam)  # k is in h/Mpc and d in Mpc/h
-        k_w1w2 /= hubble  # [Mpc^-1]
-        d *= hubble  # [Mpc]
-        w2_int.append(cddf[i]*d*np.log(10)*(10**nhi_value))
-        w1_int.append(cddf[i]*(d**2)*np.log(10)*(10**nhi_value))
+        w2_int.append(cddf[i]*d*np.log(10)*(10**nhi_value))   # unitless
+        w1_int.append(cddf[i]*(d**2)*np.log(10)*(10**nhi_value))  # [Mpc/h]
 
     w1_int, w2_int = np.array(w1_int), np.array(w2_int)
     w1 = np.trapezoid(w1_int, NHirange, axis=0)
     w2 = np.trapezoid(w2_int, NHirange, axis=0)
 
+    if Mpc:
+        k_w1w2 /= hubble  # [Mpc^-1]
+        w1 *= hubble  # [Mpc]
+
     if resample:
-        k_los, w1 = resample_to_logk(k_w1w2, w1, k_max=np.pi/(Deltax*2))
-        k_los, w2 = resample_to_logk(k_w1w2, w2, k_max=np.pi/(Deltax*2))
+        k_los, w1 = resample_to_logk(k_w1w2, w1, k_max=np.pi/(Deltax))
+        k_los, w2 = resample_to_logk(k_w1w2, w2, k_max=np.pi/(Deltax))
 
         return k_los, w1, w2
-
-        
+    
     else:
         return k_w1w2, w1, w2
-    
-
