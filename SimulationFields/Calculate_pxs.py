@@ -5,6 +5,34 @@ import glob
 import argparse
 
 def px_calc(r_bins, row_in, col_in, Nsk, fft_A, fft_B, jstep1, jstep2, verbose=True):
+
+    """ Function to compute px in a box of size (Nks, Nsk, Np)"
+
+    Parameters:
+    --------------
+    r_bins: n-array
+        Radial bins 
+    row_in: n-array
+        Indexes of rows that are included in each of the radial bins defined by r_bins
+    col_in: n-array
+        Indexes of columns that are included in each of the radial bins defined by r_bins
+    Nsk: int
+        Number of skewers
+    fft_A : n-array
+        Fourier transform values of the deltas of each skewer for the field A
+    fft_B : n-array
+        Fourier transform values of the deltas of each skewer for the field B
+    jstep1: int
+        Defines the precision in the computation for the inner radial bins
+    jstep2: int
+        Defines the precision in the computation for the outer radial bins
+
+    Returns:
+    -------------
+        (n-array) Px
+
+    """
+        
     if verbose:
         print('rbin | # valid pairs | # masked pairs ')
     jstep = 1

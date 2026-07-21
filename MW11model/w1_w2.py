@@ -101,7 +101,7 @@ def wave_to_fft_profile(wave, z, logNHi, omegam):
     Parameters
     ----------
     wave : array
-    Observed wavelength (A)
+        Observed wavelength (A)
     z : float
         Redshift
     logNHi : float
@@ -126,7 +126,7 @@ def wave_to_fft_profile(wave, z, logNHi, omegam):
 
 def resample_to_logk(k, w, k_min=None, k_max=None):
     """
-    Resample function to log-spaced k with physically motivated limits.
+    Resample function w to log-spaced k with physically motivated limits.
     
     Parameters
     -------------
@@ -138,7 +138,7 @@ def resample_to_logk(k, w, k_min=None, k_max=None):
     Returns
     ----------
     (array, array(s))
-        (log-spaced k [h/Mpc], log-spaced function)"""
+        (log-spaced k, log-spaced function)"""
     
     if k_min is None:
         k_min = k[k > 0].min()
@@ -150,7 +150,6 @@ def resample_to_logk(k, w, k_min=None, k_max=None):
     w_log = np.interp(k_log, k, w, left=0, right=0)
     
     return k_log, w_log
-
 
 
 
@@ -201,8 +200,9 @@ def compute_w1_w2(wave, NHirange, fNHiX, z, hubble, omegam, resample=True, Mpc=T
     w2 = np.trapezoid(w2_int, NHirange, axis=0)
 
     if Mpc:
-        k_w1w2 /= hubble  # [Mpc^-1]
-        w1 *= hubble  # [Mpc]
+        k_w1w2 *= hubble  # [Mpc^-1]
+        w1 /= hubble  # [Mpc]
+        w2 /= hubble  # [Mpc]
 
     if resample:
         k_los, w1 = resample_to_logk(k_w1w2, w1, k_max=np.pi/(Deltax))

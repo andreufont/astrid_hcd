@@ -43,7 +43,7 @@ def div_box(Nbox, Nsk, Np, *arrays):
             raise ValueError(f"Expected shape {(Nsk**2, Np)}, got {arr.shape}")
             
         grid = arr.reshape(Nsk, Nsk, Np)
-        new_array = np.zeros((Nbox, mb_size**2, Np))
+        new_array = np.zeros((Nbox, mb_size**2, Np), dtype=arr.dtype)
         for mb_id, (imin, imax, jmin, jmax) in enumerate(slices):
             minibox = grid[imin:imax, jmin:jmax, :]
             new_array[mb_id] = minibox.reshape(-1, Np)
@@ -117,8 +117,8 @@ def different_contributions(tau_on, tau_off, smth_factor, Np, Pw):
         
     # Smoothing:
     k_smooth = np.fft.rfftfreq(Np)*2*np.pi/Pw
-    tau_modes = np.fft.rfft(tau_hcd_init)
-    tau_hcd = np.fft.irfft(tau_modes*(np.exp(-(smth_factor*k_smooth)**2)))
+    tau_modes = (np.fft.rfft(tau_hcd_init)).astype(np.complex64)
+    tau_hcd = (np.fft.irfft(tau_modes*(np.exp(-(smth_factor*k_smooth)**2)))).astype(np.complex64)
 
     # Contributions:
     tau_lya = tau_off
@@ -161,11 +161,6 @@ def deltas(tau_hcd, tau_lya, tau_tot, mask):
     Fmean_lya = np.mean(F_lya[mask])
     Fmean_tot = np.mean(F_tot[mask])
     C = Fmean_tot/(Fmean_hcd*Fmean_lya) - 1
-
-    # Deltas
-    #delta_hcd = np.where(mask[:, None], F_hcd/Fmean_hcd - 1, np.nan)
-    #delta_lya = np.where(mask[:, None], F_lya/Fmean_lya - 1, np.nan)
-    #delta_tot = np.where(mask[:, None], F_tot/Fmean_tot - 1, np.nan)
 
     delta_hcd = F_hcd/Fmean_hcd - 1
     delta_lya = F_lya/Fmean_lya - 1
