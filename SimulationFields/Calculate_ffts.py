@@ -57,6 +57,11 @@ def main(args):
             f.create_dataset('mask', data=mask)
 
         # Computing (and saving) ffts
+        if delta_tot.dtype == 'complex64':
+            delta_tot = np.real(delta_tot)
+            delta_lya = np.real(delta_lya)
+            delta_hcd = np.real(delta_hcd)
+        
         fft_tot = np.where(mask[:, None], np.fft.rfft(delta_tot, axis=-1), np.nan)
         fft_lya = np.where(mask[:, None], np.fft.rfft(delta_lya, axis=-1), np.nan)
         fft_hcd = np.where(mask[:, None], np.fft.rfft(delta_hcd, axis=-1), np.nan)

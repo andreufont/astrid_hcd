@@ -37,16 +37,16 @@ def get_box_geometry(grid, L_Mpc, verbose=True):
     return results
     
 
-def measure_p3d_Mpc(deltas, Fmean, z, box, n_k_bins=20, k_Mpc_max=20.0, n_mu_bins=16, mask=None, verbose=True):
+def measure_p3d_Mpc(deltas1, deltas2, z, box, n_k_bins=20, k_Mpc_max=20.0, n_mu_bins=16, mask=None, verbose=True):
     
     """ Compute 3D power spectrum of input grid of skewers. 
     
     Input
     ----------
-    deltas: n-array
-        Array of shape (Nsk*Nsk, Np) containing the flux deltas
-    Fmean: float
-        Mean flux value
+    deltas1: n-array
+        Array of shape (Nsk*Nsk, Np) containing the flux deltas of field 1
+    deltas2: n-array
+        Array of shape (Nsk*Nsk, Np) containing the flux deltas of field 2
     z: float
         Redshift value
     box: list
@@ -58,41 +58,51 @@ def measure_p3d_Mpc(deltas, Fmean, z, box, n_k_bins=20, k_Mpc_max=20.0, n_mu_bin
     n_mu_bins: int
         Number of mu bins  
     mask: n-array, optional
-        Mask to select only certain skewers
+        Mask to select only certain skewers (same shape as deltas)
+
 
     Output
     -----------
     results: object
-
-    
+        z, n_xy, n_z, d_xy, d_z, k_Mpc, mu, counts, p3d_Mpc
     """
-
+    
     # collect relevant information 
-    results={'z':z,'mean_flux':Fmean,
+    results={'z':z,
                 'n_xy':box['n_xy'],'n_z':box['n_z'],
-                'd_xy':box['d_xy'],'d_z':box['d_z'],
-                'n_k_bins':n_k_bins,'k_Mpc_max':k_Mpc_max,'n_mu_bins':n_mu_bins}
+                'd_xy':box['d_xy'],'d_z':box['d_z']}
 
+
+    # Reshape deltas
+    Nsk = int(np.sqrt(deltas1.shape[0]))
+    Np = deltas1.shape[1]
+    deltas1, deltas2 = deltas1.reshape([Nsk, Nsk, Np]), deltas2.reshape([Nsk, Nsk, Np])
+    if mask is not None:
+        mask = mask.reshape([Nsk, Nsk])
+    
     # get Fourier modes
     if mask is not None:
-        deltas = deltas.copy()
-        deltas[~mask, :] = 0
+        deltas1[~mask, :] = 0
+        deltas2[~mask, :] = 0
         f_valid = np.mean(mask)
         if verbose:
             print('Masking applied')
     else:
         f_valid = 1
         
-    norm_fac = 1.0 / deltas.size
-    modes = np.fft.fftn(deltas) * norm_fac
-
+    norm_fac = 1.0 / deltas1.size
+    modes1 = np.fft.fftn(deltas1) * norm_fac
+    modes2 = np.fft.fftn(deltas2) * norm_fac
+    
     # get raw power
-    raw_p3d = (np.abs(modes) ** 2)
+    raw_p3d = (modes1*modes2.conjugate()).real
+    results['p3d_raw'] = raw_p3d    
 
     # change format and get rid of first mode (k=0)
     k_box = box['box_k'].flatten()[1:]
     mu_box = np.absolute(box['box_mu']).flatten()[1:]
     p3d_box = raw_p3d.flatten()[1:]
+
 
     # define k-binning (in 1/Mpc)
     lnk_max = np.log(k_Mpc_max)
@@ -103,6 +113,11 @@ def measure_p3d_Mpc(deltas, Fmean, z, box, n_k_bins=20, k_Mpc_max=20.0, n_mu_bin
     k_bin_edges = np.exp(lnk_bin_edges)
     # define mu-binning
     mu_bin_edges = np.linspace(0., 1., n_mu_bins + 1)
+
+    results['k_bin_edges'] = k_bin_edges
+    results['mu_bin_edges'] = mu_bin_edges
+    results['k_center'] = 0.5 * (k_bin_edges[:-1] + k_bin_edges[1:])
+    results['mu_center'] = 0.5 * (mu_bin_edges[:-1] + mu_bin_edges[1:])
 
     # compute bin averages (not including first mode with k=0, mu=0)
     binned_p3d = spt.binned_statistic_2d(k_box, mu_box, p3d_box,
@@ -115,7 +130,7 @@ def measure_p3d_Mpc(deltas, Fmean, z, box, n_k_bins=20, k_Mpc_max=20.0, n_mu_bin
     binned_mu = spt.binned_statistic_2d(k_box, mu_box, mu_box,
                     statistic = 'mean', bins = [k_bin_edges,mu_bin_edges])[0]
 
-    # convert to list so that we can use json dump
+    # convert to list 
     results['k_Mpc'] = binned_k.tolist()
     results['mu'] = binned_mu.tolist()
     results['counts'] = binned_counts.tolist()
@@ -145,12 +160,13 @@ def main(args):
         Pw_Mpc = Pw/args.hubble
         Ssk_Mpc = Ssk/args.hubble
 
-    # Total
-        
+        C = f['C'][()]
+    
+
+    # Total 
     # Reading delta files
     with h5py.File(filename, 'r') as f:
         delta_tot = f['deltas/delta_tot'][:]
-        Fmean_tot = f['mean_fluxes/mean_flux_tot'][()]
         if args.mask:
             mask = f['Mask'][()][:]
         else:
@@ -165,38 +181,79 @@ def main(args):
         k_max = k_Nyq/2
 
     # Computing P3d
-    results = measure_p3d_Mpc(delta_tot, Fmean_tot, args.z, box, n_k_bins=args.n_k_bins, k_Mpc_max=k_max, n_mu_bins=args.n_mu_bins, mask=mask)
+
+    # Total
+    results = measure_p3d_Mpc(delta_tot, delta_tot, args.z, box, n_k_bins=args.n_k_bins, 
+                              k_Mpc_max=k_max, n_mu_bins=args.n_mu_bins, mask=mask)
     p3d_tot = np.array(results['p3d_Mpc'])
     counts_tot = np.array(results['counts'])
     k = np.array(results['k_Mpc'])
     mu = np.array(results['mu'])
+    mu_center = np.array(results['mu_center'])
+    mu_bins = np.array(results['mu_bin_edges'])
     del delta_tot, results
-        
-    # Lya
 
+    
+    # Lya
     # Reading delta files
     with h5py.File(filename, 'r') as f:
         delta_lya = f['deltas/delta_lya'][:]
-        Fmean_lya = f['mean_fluxes/mean_flux_lya'][()]
 
     # Computing P3d
-    results = measure_p3d_Mpc(delta_lya, Fmean_lya, args.z, box, n_k_bins=args.n_k_bins, k_Mpc_max=k_max, n_mu_bins=args.n_mu_bins, mask=mask, verbose=False)
+    results = measure_p3d_Mpc(delta_lya, delta_lya, args.z, box, n_k_bins=args.n_k_bins, 
+                              k_Mpc_max=k_max, n_mu_bins=args.n_mu_bins, mask=mask, verbose=False)
     p3d_lya = np.array(results['p3d_Mpc'])
     counts_lya = np.array(results['counts'])
-    del delta_lya, results
+    del results
 
+    
     # Hcd
-
     # Reading delta files
     with h5py.File(filename, 'r') as f:
         delta_hcd = f['deltas/delta_hcd'][:]
-        Fmean_hcd = f['mean_fluxes/mean_flux_hcd'][()]
 
     # Computing P3d
-    results = measure_p3d_Mpc(delta_hcd, Fmean_hcd, args.z, box, n_k_bins=args.n_k_bins, k_Mpc_max=k_max, n_mu_bins=args.n_mu_bins, mask=mask, verbose=False)
+    results = measure_p3d_Mpc(delta_hcd, delta_hcd, args.z, box, n_k_bins=args.n_k_bins, 
+                              k_Mpc_max=k_max, n_mu_bins=args.n_mu_bins, mask=mask, verbose=False)
     p3d_hcd = np.array(results['p3d_Mpc'])
     counts_hcd = np.array(results['counts'])
+    del results
+
+    
+    # LyaxHCD
+    # Computing P3d
+    results = measure_p3d_Mpc(delta_lya, delta_hcd, args.z, box, n_k_bins=args.n_k_bins, 
+                              k_Mpc_max=k_max, n_mu_bins=args.n_mu_bins, mask=mask, verbose=False)
+    p3d_lyahcd = np.array(results['p3d_Mpc'])
+    counts_lyahcd = np.array(results['counts'])
+    del results
+
+
+    # 3Lya
+    delta_lyahcd = delta_lya*delta_hcd
+    # Computing P3d
+    results = measure_p3d_Mpc(delta_lyahcd, delta_lya, args.z, box, n_k_bins=args.n_k_bins, 
+                              k_Mpc_max=k_max, n_mu_bins=args.n_mu_bins, mask=mask, verbose=False)
+    p3d_3lya = np.array(results['p3d_Mpc'])
+    counts_3lya = np.array(results['counts'])
+    del delta_lya, results
+
+
+    # 3HCD
+    # Computing P3d
+    results = measure_p3d_Mpc(delta_lyahcd, delta_hcd, args.z, box, n_k_bins=args.n_k_bins, 
+                              k_Mpc_max=k_max, n_mu_bins=args.n_mu_bins, mask=mask, verbose=False)
+    p3d_3hcd = np.array(results['p3d_Mpc'])
+    counts_3hcd = np.array(results['counts'])
     del delta_hcd, results
+
+    # 4
+    # Computing P3d
+    results = measure_p3d_Mpc(delta_lyahcd, delta_lyahcd, args.z, box, n_k_bins=args.n_k_bins, 
+                              k_Mpc_max=k_max, n_mu_bins=args.n_mu_bins, mask=mask, verbose=False)
+    p3d_4 = np.array(results['p3d_Mpc'])
+    counts_4 = np.array(results['counts'])
+    del delta_lyahcd, results
         
     
     # Writing the files out
@@ -215,13 +272,28 @@ def main(args):
             print(f'{m} = {f.attrs[m]}')
             
         f.create_dataset('k', data=k)  # Inverse units of Lbox (1/Mpc)
-        f.create_dataset('mu', data=mu)  
-        f.create_dataset('p3d_tot', data=p3d_tot)  # Same units as Lbox^3 (Mpc)^3
-        f.create_dataset('p3d_lya', data=p3d_lya)
-        f.create_dataset('p3d_hcd', data=p3d_hcd)
-        f.create_dataset('counts_tot', data=counts_tot)
-        f.create_dataset('counts_lya', data=counts_lya)
-        f.create_dataset('counts_hcd', data=counts_hcd)
+        f.create_dataset('mu_bins', data=mu_bins)  
+        f.create_dataset('mu_center', data=mu_center)
+        f.create_dataset('mu', data=mu)
+        f.create_dataset('C', data=C)
+        
+        grp1 = f.create_group('p3ds')
+        grp1.create_dataset('p3d_tot', data=p3d_tot)  # Same units as Lbox^3 (Mpc)^3
+        grp1.create_dataset('p3d_lya', data=p3d_lya)
+        grp1.create_dataset('p3d_hcd', data=p3d_hcd)
+        grp1.create_dataset('p3d_lyahcd', data=p3d_lyahcd)
+        grp1.create_dataset('p3d_3lya', data=p3d_3lya)
+        grp1.create_dataset('p3d_3hcd', data=p3d_3hcd)
+        grp1.create_dataset('p3d_4', data=p3d_4)
+
+        grp2 = f.create_group('counts')
+        grp2.create_dataset('counts_tot', data=counts_tot)
+        grp2.create_dataset('counts_lya', data=counts_lya)
+        grp2.create_dataset('counts_hcd', data=counts_hcd)
+        grp2.create_dataset('counts_lyahcd', data=counts_lyahcd)
+        grp2.create_dataset('counts_3lya', data=counts_3lya)
+        grp2.create_dataset('counts_3hcd', data=counts_3hcd)
+        grp2.create_dataset('counts_4', data=counts_4)
         
     print(f'Results saved in {args.output_file}.hdf5')
 
